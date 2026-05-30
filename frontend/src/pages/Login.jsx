@@ -34,7 +34,7 @@ export default function Login() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 w-full max-w-sm">
         <div className="flex items-center gap-3 mb-1">
-          <img src="/src/assets/logo.png" alt="Milky Way" className="h-12 w-12 rounded-full object-cover" />
+          <img src="/logo.png" alt="Milky Way" className="h-12 w-12 rounded-full object-cover" />
           <h1 className="text-2xl font-semibold text-gray-800">Milky Way</h1>
         </div>
         <p className="text-sm text-gray-500 mb-6">Sign in to your account</p>

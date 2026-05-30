@@ -15,7 +15,7 @@ export default function Layout() {
       <nav className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-8">
           <div className="flex items-center gap-2">
-              <img src="/src/assets/logo.png" alt="Milky Way" className="h-8 w-8 rounded-full object-cover" />
+              <img src="/logo.png" alt="Milky Way" className="h-8 w-8 rounded-full object-cover" />
               <span className="font-semibold text-indigo-600 text-lg">Milky Way</span>
             </div>
           <div className="flex gap-6 text-sm">
