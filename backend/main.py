@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from routers import questions, quiz, flashcards, users
 
 app = FastAPI(
-    title="StudyApp API",
+    title="MilkyWay API",
     description="Notion-powered quiz and flashcard platform",
     version="1.0.0"
 )

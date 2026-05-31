@@ -153,3 +153,24 @@ async def quiz_history(user=Depends(get_current_user)):
         "*, topics(title)"
     ).eq("user_id", user["id"]).order("created_at", desc=True).execute()
     return result.data
+
+@router.get("/review/{session_id}")
+async def review_session(session_id: str, user=Depends(get_current_user)):
+    """Get full question review for a completed session."""
+    # Verify session belongs to user
+    session = supabase.table("quiz_sessions").select("*").eq(
+        "id", session_id
+    ).eq("user_id", user["id"]).single().execute()
+
+    if not session.data:
+        raise HTTPException(404, "Session not found")
+
+    # Get all attempts with question details
+    attempts = supabase.table("quiz_attempts").select(
+        "*, questions(question_text, option_a, option_b, option_c, option_d, correct_option, explanation)"
+    ).eq("session_id", session_id).execute()
+
+    return {
+        "session": session.data,
+        "attempts": attempts.data
+    }
