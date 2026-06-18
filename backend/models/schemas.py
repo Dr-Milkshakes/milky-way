@@ -46,7 +46,7 @@ class QuestionReview(BaseModel):
 
 # ── Quiz ─────────────────────────────────────────────
 class StartQuizRequest(BaseModel):
-    topic_id: Optional[str] = None
+    topic_ids: Optional[list[str]] = None
     subject: Optional[str] = None
     num_questions: int = 10
 

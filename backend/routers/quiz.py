@@ -13,8 +13,8 @@ async def start_quiz(req: StartQuizRequest, user=Depends(get_current_user)):
     """Start a new quiz session. Filter by topic or subject."""
     query = supabase.table("questions").select("*").eq("status", "approved")
 
-    if req.topic_id:
-        query = query.eq("topic_id", req.topic_id)
+    if req.topic_ids:
+        query = query.in_("topic_id", req.topic_ids)
     elif req.subject:
         # Get topic IDs for this subject first
         topics = supabase.table("topics").select("id").eq(
@@ -38,7 +38,7 @@ async def start_quiz(req: StartQuizRequest, user=Depends(get_current_user)):
     # Create session
     session = supabase.table("quiz_sessions").insert({
         "user_id": user["id"],
-        "topic_id": req.topic_id,
+        "topic_id": req.topic_id[0] if req.topic_ids and len(req.topic_ids) == 1 else None,
         "subject": req.subject,
         "total_questions": len(selected),
     }).execute()
