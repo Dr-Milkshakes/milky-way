@@ -55,7 +55,7 @@ const handleGenerateFlashcards = async (topicId) => {
   } finally {
     setGeneratingFlashcards(null);
   }
-};
+  };
 
   const handleReview = async (id, status) => {
     await reviewQuestion(id, status);
