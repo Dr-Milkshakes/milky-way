@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { syncNotion, getTopics, generateQuestions, getDraftQuestions, reviewQuestion } from "../lib/api";
+import { syncNotion, getTopics, generateQuestions, getDraftQuestions, reviewQuestion, generateFlashcards } from "../lib/api";
 
 export default function AdminPanel() {
   const [topics, setTopics] = useState([]);
