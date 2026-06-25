@@ -43,11 +43,11 @@ export default function AdminPanel() {
     }
   };
 
-const handleGenerateFlashcards = async (topicId) => {
-  setGeneratingFlashcards(topicId);
-  try {
-    const { data } = await generateFlashcards(topicId, 20);
-    alert(`Generated ${data.generated} flashcards for "${data.topic}".`);
+  const handleGenerateFlashcards = async (topicId) => {
+    setGeneratingFlashcards(topicId);
+    try {
+      const { data } = await generateFlashcards(topicId, 20);
+      alert(`Generated ${data.generated} flashcards for "${data.topic}".`);
     } catch (e) {
       alert(e.response?.data?.detail || "Generation failed");
     } finally {
