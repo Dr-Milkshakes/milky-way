@@ -47,7 +47,7 @@ export default function AdminPanel() {
     setGeneratingFlashcards(topicId);
     try {
       const { data } = await api.post(
-        `/api/flashcards/generate?topic_id=${topicId}&num_cards=20`
+        `/api/flashcards/generate?topic_id=${topicId}&num_cards=35`
       );
       alert(`Generated ${data.generated} flashcards for "${data.topic}".`);
     } catch (e) {
