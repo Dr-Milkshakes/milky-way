@@ -172,7 +172,7 @@ Return ONLY a valid JSON array, no preamble, no markdown fences. Format:
 ]
 """
 
-def generate_flashcards_for_topic(topic_id: str, num_cards: int = 20) -> dict:
+def generate_flashcards_for_topic(topic_id: str, num_cards: int = 25) -> dict:
     """
     Generate AI flashcards (MCQ + short + essay) for a topic.
     Saved directly as approved — no review needed.
