@@ -46,11 +46,10 @@ export default function AdminPanel() {
   const handleGenerateFlashcards = async (topicId) => {
     setGeneratingFlashcards(topicId);
     try {
-      const { data } = await generateFlashcards(topicId, 25);
+      const { data } = await generateFlashcards(topicId, 20);
       alert(`Generated ${data.generated} flashcards for "${data.topic}".`);
     } catch (e) {
-      alert(e.response?.data?.detail || e.message || "Generation failed");
-      console.error(e.response?.data);
+      alert(e.response?.data?.detail || "Generation failed");
     } finally {
       setGeneratingFlashcards(null);
     }
