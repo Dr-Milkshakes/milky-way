@@ -135,3 +135,76 @@ def record_flashcard_review(user_id: str, flashcard_id: str, quality: int) -> di
     }).eq("id", flashcard_id).execute()
 
     return updated.data[0]
+
+FLASHCARD_PROMPT = """
+You are a medical education expert creating study flashcards for medical students.
+
+Given the following notes on "{topic_title}" ({subject}):
+
+---
+{content}
+---
+
+Generate exactly {num_cards} flashcards. Mix:
+- 60% short answer (1-3 sentence answer)
+- 40% essay (3-6 sentence detailed answer)
+
+Return ONLY a valid JSON array. No preamble, no markdown. Format:
+[
+  {{"type": "short", "question": "...", "answer": "..."}},
+  {{"type": "essay", "question": "...", "answer": "..."}}
+]
+"""
+
+def generate_ai_flashcards(topic_id: str, num_cards: int = 20) -> dict:
+    import google.generativeai as genai
+    import json as json_lib
+    from config import settings
+
+    genai.configure(api_key=settings.gemini_api_key)
+    model = genai.GenerativeModel("gemini-1.5-flash")
+
+    topic = supabase.table("topics").select("*").eq("id", topic_id).single().execute()
+    if not topic.data:
+        raise ValueError("Topic not found")
+
+    t = topic.data
+    content = t.get("content", "").strip()
+    if len(content) < 100:
+        raise ValueError(f"Topic '{t['title']}' has insufficient content. Please sync Notion first.")
+
+    prompt = FLASHCARD_PROMPT.format(
+        topic_title=t["title"],
+        subject=t["subject"],
+        content=content[:8000],
+        num_cards=num_cards
+    )
+
+    response = model.generate_content(prompt)
+    raw = response.text.strip()
+
+    if raw.startswith("```"):
+        parts = raw.split("```")
+        raw = parts[1] if len(parts) > 1 else raw
+        if raw.startswith("json"):
+            raw = raw[4:]
+    raw = raw.strip()
+
+    cards = json_lib.loads(raw)
+
+    # Delete existing flashcards for this topic before inserting new ones
+    supabase.table("ai_flashcards").delete().eq("topic_id", topic_id).execute()
+
+    saved = 0
+    for card in cards:
+        if not card.get("question") or not card.get("answer"):
+            continue
+        supabase.table("ai_flashcards").insert({
+            "topic_id": topic_id,
+            "type": card.get("type", "short"),
+            "question": card["question"],
+            "answer": card["answer"],
+        }).execute()
+        saved += 1
+
+    return {"topic": t["title"], "generated": saved}

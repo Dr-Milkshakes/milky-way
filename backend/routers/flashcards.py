@@ -1,194 +1,116 @@
 from fastapi import APIRouter, Depends, HTTPException
-from models.schemas import FlashcardReview
-from services.flashcards import (
-    get_due_flashcards, record_flashcard_review, add_topic_to_deck
-)
 from database import supabase
-from routers.users import get_current_user
-from services.flashcards import sm2
-
+from routers.users import get_current_user, require_admin
+from services.flashcards import generate_ai_flashcards, sm2
+from datetime import date, timedelta
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/flashcards", tags=["flashcards"])
 
 
-@router.get("/due")
-async def due_cards(topic_id: str = None, limit: int = 20, user=Depends(get_current_user)):
-    """Get flashcards due for review today."""
-    return get_due_flashcards(user["id"], topic_id, limit)
+class ReviewBody(BaseModel):
+    quality: int  # 0-5
 
 
-@router.post("/{flashcard_id}/review")
-async def review_card(
-    flashcard_id: str,
-    body: FlashcardReview,
-    user=Depends(get_current_user)
+@router.post("/generate")
+async def generate_flashcards(
+    topic_id: str,
+    num_cards: int = 20,
+    user=Depends(require_admin)
 ):
-    """Submit a flashcard review (quality 0-5) to update spaced repetition schedule."""
     try:
-        return record_flashcard_review(user["id"], flashcard_id, body.quality)
+        return generate_ai_flashcards(topic_id, num_cards)
     except ValueError as e:
         raise HTTPException(400, str(e))
-
-
-@router.post("/add-topic/{topic_id}")
-async def add_topic(topic_id: str, user=Depends(get_current_user)):
-    """Manually add all approved questions for a topic to your flashcard deck."""
-    return add_topic_to_deck(user["id"], topic_id)
-
-
-@router.get("/my-decks")
-async def my_decks(user=Depends(get_current_user)):
-    """List all flashcard decks for the current user."""
-    result = supabase.table("flashcard_decks").select(
-        "*, topics(title, subject)"
-    ).eq("user_id", user["id"]).execute()
-    return result.data
-
-
-@router.get("/stats")
-async def flashcard_stats(user=Depends(get_current_user)):
-    """Get due count and overall deck stats for the user."""
-    from datetime import date
-    decks = supabase.table("flashcard_decks").select("id").eq(
-        "user_id", user["id"]
-    ).execute()
-    deck_ids = [d["id"] for d in decks.data]
-
-    if not deck_ids:
-        return {"total_cards": 0, "due_today": 0, "decks": 0}
-
-    total = supabase.table("flashcards").select(
-        "id", count="exact"
-    ).in_("deck_id", deck_ids).execute()
-
-    due = supabase.table("flashcards").select(
-        "id", count="exact"
-    ).in_("deck_id", deck_ids).lte("due_date", str(date.today())).execute()
-
-    return {
-        "total_cards": total.count,
-        "due_today": due.count,
-        "decks": len(deck_ids)
-    }
-
-@router.delete("/deck/{deck_id}")
-async def remove_deck(deck_id: str, user=Depends(get_current_user)):
-    """Remove a flashcard deck and all its cards."""
-    # Verify deck belongs to user
-    deck = supabase.table("flashcard_decks").select("id").eq(
-        "id", deck_id
-    ).eq("user_id", user["id"]).single().execute()
-    
-    if not deck.data:
-        raise HTTPException(404, "Deck not found")
-
-    # Cards cascade delete automatically via FK
-    supabase.table("flashcard_decks").delete().eq("id", deck_id).execute()
-    return {"deleted": deck_id}
-
-@router.get("/ai/topic/{topic_id}")
-async def get_ai_flashcards(topic_id: str, user=Depends(get_current_user)):
-    """Get all AI flashcards for a topic with user progress."""
-    cards = supabase.table("ai_flashcards").select("*").eq(
-        "topic_id", topic_id
-    ).execute()
-
-    if not cards.data:
-        return []
-
-    card_ids = [c["id"] for c in cards.data]
-
-    # Get user progress for these cards
-    progress = supabase.table("ai_flashcard_progress").select("*").eq(
-        "user_id", user["id"]
-    ).in_("flashcard_id", card_ids).execute()
-
-    progress_map = {p["flashcard_id"]: p for p in progress.data}
-
-    # Merge progress into cards
-    result = []
-    for card in cards.data:
-        p = progress_map.get(card["id"], {})
-        result.append({
-            **card,
-            "due_date": p.get("due_date", str(date.today())),
-            "interval_days": p.get("interval_days", 1),
-            "repetitions": p.get("repetitions", 0),
-            "progress_id": p.get("id"),
-        })
-
-    return result
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 
 @router.get("/ai/due")
-async def get_due_ai_flashcards(topic_id: str = None, user=Depends(get_current_user)):
-    """Get AI flashcards due for review today."""
-    from datetime import date as date_type
-
-    # Get all cards for topics the user has started
-    started = supabase.table("ai_flashcard_progress").select(
-        "flashcard_id"
-    ).eq("user_id", user["id"]).lte("due_date", str(date_type.today())).execute()
-
-    due_ids = [r["flashcard_id"] for r in started.data]
-
-    # Also include cards never reviewed (no progress entry)
+async def get_due_cards(topic_id: str = None, user=Depends(get_current_user)):
+    # Fetch all cards
     query = supabase.table("ai_flashcards").select("*, topics(title, subject)")
     if topic_id:
         query = query.eq("topic_id", topic_id)
+    all_cards = query.execute().data or []
 
-    all_cards = query.execute()
+    if not all_cards:
+        return []
 
-    reviewed_ids = {r["flashcard_id"] for r in supabase.table(
-        "ai_flashcard_progress"
-    ).select("flashcard_id").eq("user_id", user["id"]).execute().data}
+    # Fetch user progress
+    progress_rows = supabase.table("ai_flashcard_progress").select(
+        "flashcard_id, due_date"
+    ).eq("user_id", user["id"]).execute().data or []
 
-    result = []
-    for card in all_cards.data:
-        if card["id"] in due_ids or card["id"] not in reviewed_ids:
-            result.append(card)
+    progress_map = {p["flashcard_id"]: p["due_date"] for p in progress_rows}
+    today = str(date.today())
 
-    return result[:30]  # max 30 at a time
+    result = [
+        card for card in all_cards
+        if progress_map.get(card["id"], today) <= today
+    ]
+
+    return result[:30]
+
+
+@router.get("/ai/topic/{topic_id}")
+async def get_cards_by_topic(topic_id: str, user=Depends(get_current_user)):
+    cards = supabase.table("ai_flashcards").select(
+        "*, topics(title, subject)"
+    ).eq("topic_id", topic_id).execute().data or []
+    return cards
 
 
 @router.post("/ai/{flashcard_id}/review")
-async def review_ai_flashcard(
+async def review_card(
     flashcard_id: str,
-    body: FlashcardReview,
+    body: ReviewBody,
     user=Depends(get_current_user)
 ):
-    """Review an AI flashcard and update spaced repetition schedule."""
-    from datetime import date as date_type, timedelta
+    if body.quality < 0 or body.quality > 5:
+        raise HTTPException(400, "Quality must be 0-5")
 
     existing = supabase.table("ai_flashcard_progress").select("*").eq(
         "flashcard_id", flashcard_id
-    ).eq("user_id", user["id"]).execute()
+    ).eq("user_id", user["id"]).execute().data
 
-    if existing.data:
-        p = existing.data[0]
+    today = date.today()
+
+    if existing:
+        p = existing[0]
         new_ef, new_interval, new_reps = sm2(
             p["ease_factor"], p["interval_days"], p["repetitions"], body.quality
         )
-        new_due = str(date_type.today() + timedelta(days=new_interval))
         supabase.table("ai_flashcard_progress").update({
             "ease_factor": new_ef,
             "interval_days": new_interval,
             "repetitions": new_reps,
-            "due_date": new_due,
+            "due_date": str(today + timedelta(days=new_interval)),
             "last_reviewed_at": "now()"
         }).eq("id", p["id"]).execute()
     else:
-        # First review — create progress entry
         new_ef, new_interval, new_reps = sm2(2.5, 1, 0, body.quality)
-        new_due = str(date_type.today() + timedelta(days=new_interval))
         supabase.table("ai_flashcard_progress").insert({
             "user_id": user["id"],
             "flashcard_id": flashcard_id,
             "ease_factor": new_ef,
             "interval_days": new_interval,
             "repetitions": new_reps,
-            "due_date": new_due,
+            "due_date": str(today + timedelta(days=new_interval)),
             "last_reviewed_at": "now()"
         }).execute()
 
     return {"reviewed": flashcard_id}
+
+
+@router.get("/stats")
+async def flashcard_stats(user=Depends(get_current_user)):
+    total = supabase.table("ai_flashcards").select("id", count="exact").execute()
+    progress = supabase.table("ai_flashcard_progress").select(
+        "id", count="exact"
+    ).eq("user_id", user["id"]).lte("due_date", str(date.today())).execute()
+
+    return {
+        "total_cards": total.count or 0,
+        "due_today": progress.count or 0,
+    }
