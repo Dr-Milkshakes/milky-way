@@ -8,7 +8,8 @@ export default function AdminPanel() {
   const [generating, setGenerating] = useState(null); // topic id being generated
   const [syncResult, setSyncResult] = useState(null);
   const [tab, setTab] = useState("sync"); // sync | review
-
+  const [generatingFlashcards, setGeneratingFlashcards] = useState(null);
+  
   useEffect(() => {
     getTopics().then(r => setTopics(r.data));
     getDraftQuestions().then(r => setDrafts(r.data));
@@ -41,6 +42,20 @@ export default function AdminPanel() {
       setGenerating(null);
     }
   };
+
+const handleGenerateFlashcards = async (topicId) => {
+  setGeneratingFlashcards(topicId);
+  try {
+    const { data } = await api.post(
+      `/api/flashcards/generate?topic_id=${topicId}&num_cards=20`
+    );
+    alert(`Generated ${data.generated} flashcards for "${data.topic}".`);
+  } catch (e) {
+    alert(e.response?.data?.detail || "Generation failed");
+  } finally {
+    setGeneratingFlashcards(null);
+  }
+};
 
   const handleReview = async (id, status) => {
     await reviewQuestion(id, status);
@@ -106,6 +121,13 @@ export default function AdminPanel() {
                     className="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-full hover:bg-indigo-100 disabled:opacity-50"
                   >
                     {generating === t.id ? "Generating..." : "Generate Questions"}
+                  </button>
+                  <button
+                    onClick={() => handleGenerateFlashcards(t.id)}
+                    disabled={generatingFlashcards === t.id}
+                    className="text-xs bg-teal-50 text-teal-600 px-3 py-1.5 rounded-full hover:bg-teal-100 disabled:opacity-50"
+                  >
+                    {generatingFlashcards === t.id ? "Generating..." : "Generate Flashcards"}
                   </button>
                 </div>
               ))}

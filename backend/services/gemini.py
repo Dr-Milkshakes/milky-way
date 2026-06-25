@@ -141,3 +141,101 @@ def review_question(question_id: str, status: str) -> dict:
     ).eq("id", question_id).execute()
 
     return result.data[0] if result.data else {}
+
+
+FLASHCARD_PROMPT = """
+You are a medical education expert creating study flashcards.
+
+Given the following notes on the topic "{topic_title}" (subject: {subject}):
+
+---
+{content}
+---
+
+Generate exactly {num_cards} flashcards covering the full breadth of this topic.
+Mix the types as follows:
+- 60% Short answer (concise answer, 1-3 sentences)
+- 40% Essay (detailed model answer, 3-6 sentences)
+
+Return ONLY a valid JSON array, no preamble, no markdown fences. Format:
+[
+  {{
+    "type": "short",
+    "question": "...",
+    "answer": "..."
+  }},
+  {{
+    "type": "essay",
+    "question": "...",
+    "answer": "..."
+  }}
+]
+"""
+
+def generate_flashcards_for_topic(topic_id: str, num_cards: int = 20) -> dict:
+    """
+    Generate AI flashcards (MCQ + short + essay) for a topic.
+    Saved directly as approved — no review needed.
+    """
+    result = supabase.table("topics").select("*").eq("id", topic_id).single().execute()
+    if not result.data:
+        raise ValueError(f"Topic {topic_id} not found")
+
+    topic = result.data
+    content = topic.get("content", "")
+
+    if len(content.strip()) < 100:
+        raise ValueError(f"Topic '{topic['title']}' has insufficient content")
+
+    content_chunk = content[:8000]
+
+    prompt = FLASHCARD_PROMPT.format(
+        topic_title=topic["title"],
+        subject=topic["subject"],
+        content=content_chunk,
+        num_cards=num_cards
+    )
+
+    try:
+        response = model.generate_content(prompt)
+        raw = response.text.strip()
+
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        raw = raw.strip()
+
+        cards = json.loads(raw)
+
+        if not isinstance(cards, list):
+            raise ValueError("Gemini did not return a JSON array")
+
+        saved = 0
+        for card in cards:
+            card_type = card.get("type", "short")
+            supabase.table("ai_flashcards").insert({
+                "topic_id": topic_id,
+                "type": card_type,
+                "question": card.get("question", ""),
+                "option_a": None,
+                "option_b": None,
+                "option_c": None,
+                "option_d": None,
+                "correct_option": None,
+                "answer": card.get("answer", ""),
+                "explanation": None,
+            }).execute()
+            saved += 1
+        logger.info(f"Generated {saved} flashcards for topic '{topic['title']}'")
+        return {
+            "topic": topic["title"],
+            "generated": saved,
+        }
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Gemini returned invalid JSON: {e}")
+        raise ValueError("AI returned malformed response. Try again.")
+    except Exception as e:
+        logger.error(f"Flashcard generation failed: {e}")
+        raise

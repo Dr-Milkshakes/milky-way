@@ -4,6 +4,7 @@ from services.gemini import generate_questions_for_topic, get_draft_questions, r
 from services.notion import sync_notion_database, get_subjects
 from database import supabase
 from routers.users import get_current_user, require_admin
+from services.gemini import generate_flashcards_for_topic
 
 router = APIRouter(tags=["questions"])
 
@@ -81,3 +82,16 @@ async def list_approved_questions(
 
     result = query.order("created_at", desc=True).execute()
     return result.data
+
+@router.post("/api/flashcards/generate")
+async def generate_flashcards(
+    topic_id: str,
+    num_cards: int = 20,
+    user=Depends(require_admin)
+):
+    """Generate AI flashcards for a topic."""
+    try:
+        result = generate_flashcards_for_topic(topic_id, num_cards)
+        return result
+    except ValueError as e:
+        raise HTTPException(400, str(e))
