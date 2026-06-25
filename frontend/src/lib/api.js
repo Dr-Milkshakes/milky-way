@@ -52,5 +52,9 @@ export const generateQuestions = (topicId, numQuestions = 10) =>
   api.post("/api/questions/generate", null, {
     params: { topic_id: topicId, num_questions: numQuestions },
   });
+export const generateFlashcards = (topicId, numCards = 20) =>
+  api.post("/api/flashcards/generate", null, {
+    params: { topic_id: topicId, num_cards: numCards },
+  });
 
 export default api;
